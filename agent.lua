@@ -42,14 +42,9 @@ local Agent = Emitter:extend()
 local Confd = require('confd')
 
 function Agent:initialize(options, types)
-  if not options.stateDirectory then
-    options.stateDirectory = constants:get('DEFAULT_STATE_PATH')
-  end
-  logging.debug('Using state directory ' .. options.stateDirectory)
-  self._stateDirectory = options.stateDirectory
   self._config = virgo.config
   self._options = options
-  self._upgradesEnabled = true
+  self._upgradesEnabled = options.upgrades_enabled or false
   self._types = types or {}
   self._confd = Confd:new(options.confdDir, options.stateDirectory)
 end
@@ -113,13 +108,6 @@ end
 
 function Agent:connect(callback)
   local endpoints = self._config['endpoints']
-  local upgradeStr = self._config['upgrade']
-  if upgradeStr then
-    upgradeStr = upgradeStr:lower()
-    if upgradeStr == 'false' or upgradeStr == 'disabled' then
-      self._upgradesEnabled = false
-    end
-  end
 
   if #endpoints <= 0 then
     logging.error('no endpoints')
@@ -129,11 +117,6 @@ function Agent:connect(callback)
     return
   end
 
-  -- ReEnable upgrades when we have a handle on them
-  self._upgradesEnabled = false
-
-  logging.info(fmt('Upgrades are %s', self._upgradesEnabled and 'enabled' or 'disabled'))
-
   local connectionStreamType = self._types.ConnectionStream or ConnectionStream
   self._streams = connectionStreamType:new(self._config['id'],
                                        self._config['token'],
@@ -141,6 +124,7 @@ function Agent:connect(callback)
                                        self._upgradesEnabled,
                                        self._options,
                                        self._types)
+  self._streams:on('upgrade.success', utils.bind(self._onUpgradeSuccess, self))
   self._streams:on('error', function(err)
     logging.error(JSON.stringify(err))
   end)
@@ -151,14 +135,24 @@ function Agent:connect(callback)
       self:emit('promote')
     end)
   end)
-
   self._streams:createConnections(endpoints, callback)
+end
+
+function Agent:_onUpgradeSuccess()
+  if virgo.restart_on_upgrade == "true" then
+    self:_onShutdown(constants:get('SHUTDOWN_RESTART'))
+  elseif virgo.exit_on_upgrade == "true" then
+    self:_onShutdown(constants:get('SHUTDOWN_UPGRADE'))
+  end
 end
 
 function Agent:_shutdown(msg, timeout, exit_code, shutdownType)
   if shutdownType == constants:get('SHUTDOWN_RESTART') then
+    if msg then
+      logging.info(msg)
+    end
     virgo.perform_restart_on_upgrade()
-  else
+  elseif shutdownType == constants:get('SHUTDOWN_UPGRADE') then
     -- Sleep to keep from busy restarting on upstart/systemd/etc
     timer.setTimeout(timeout, function()
       if msg then
@@ -170,7 +164,6 @@ function Agent:_shutdown(msg, timeout, exit_code, shutdownType)
 end
 
 function Agent:_onShutdown(shutdownType)
-  local sleep = 0
   local timeout = 0
   local exit_code = 0
   local msg
@@ -186,7 +179,7 @@ function Agent:_onShutdown(shutdownType)
     exit_code = constants:get('RATE_LIMIT_RETURN_CODE')
     timeout = constants:get('RATE_LIMIT_SLEEP')
   elseif shutdownType == constants:get('SHUTDOWN_RESTART') then
-    msg = 'Attempting to restart agent'
+    msg = 'Attempting to restart via sysV services'
   else
     msg = fmt('Shutdown called for unknown type %s', shutdownType)
   end
@@ -196,10 +189,6 @@ end
 
 function Agent:getStreams()
   return self._streams
-end
-
-function Agent:disableUpgrades()
-  self._upgradesEnabled = false
 end
 
 function Agent:getConfig()

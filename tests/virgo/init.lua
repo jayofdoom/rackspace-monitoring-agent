@@ -72,22 +72,6 @@ exports['test_paths'] = function(test, asserts)
   end)
 end
 
-exports['test_bundle_path'] = function(test, asserts)
-  local tmpPath = path.join('tests', 'bundles')
-  local files = {}
-
-  virgo_paths.set_bundle_path(path.join(tmpPath, 'a'))
-  asserts.ok(virgo_paths.get(virgo_paths.VIRGO_PATH_BUNDLE) == path.join('tests','bundles','a','monitoring-0.0.3.zip'))
-
-  virgo_paths.set_bundle_path(path.join(tmpPath, 'b'))
-  asserts.ok(virgo_paths.get(virgo_paths.VIRGO_PATH_BUNDLE) == path.join('tests','bundles','b','monitoring-1.0.0.zip'))
-
-  virgo_paths.set_bundle_path(path.join(tmpPath, 'c'))
-  asserts.ok(virgo_paths.get(virgo_paths.VIRGO_PATH_BUNDLE) == path.join('tests','bundles','c','monitoring-0.1.0.zip'))
-
-  test.done()
-end
-
 exports['test_virgo_items'] = function(test, asserts)
   asserts.ok(virgo.os)
   asserts.ok(virgo.version)

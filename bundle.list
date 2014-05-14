@@ -51,6 +51,7 @@
 ./base/util/prompt.lua
 ./base/util/sigar.lua
 ./base/util/test.lua
+./base/util/upgrade.lua
 ./base/util/underscore.lua
 ./base/util/uuid.lua
 ./certs.lua

@@ -115,6 +115,11 @@ function Agent.run()
     options.proxy = virgo.config['proxy']
   end
 
+  options.upgrades_enabled = true
+  if argv.args.o or virgo.config['upgrade'] == 'disabled' then
+    options.upgrades_enabled = false
+  end
+
   local agent = MonitoringAgent:new(options, types)
 
   if not argv.args.u then
