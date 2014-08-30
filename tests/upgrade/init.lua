@@ -13,8 +13,13 @@ limitations under the License.
 local exec = require('virgo_exec')
 local string = require('string')
 local upgrade = require('/base/client/upgrade')
+local path = require('path')
+local async = require('async')
+local fs = require('fs')
+local fixtures = require('/tests/fixtures')
 
 local exports = {}
+local testexe = '0001.sh'
 
 local function createOptions(bExe, myVersion)
   return {
@@ -24,31 +29,51 @@ local function createOptions(bExe, myVersion)
   }
 end
 
-exports['test_virgo_upgrade_1'] = function(test, asserts)
-  local options = createOptions('tests/upgrade/exe/0001.sh', '0.2.0-24')
-  upgrade.attempt(options, function(err, status)
-    asserts.ok(not err)
-    asserts.ok(status == upgrade.UPGRADE_EQUAL)
-    test.done()
+local setupExe = function(dir, name, perms, cb)
+  local exe = fixtures['upgrade'][name]
+  if not exe then
+    return cb('no exe named: ' .. name)
+  end
+  async.waterfall({
+    function(cb)
+      fs.open(path.join(dir, name), 'w', perms, cb)
+    end,
+    function(fd, cb)
+      fs.write(fd, 0, exe, function(err, written)
+        return cb(err, written, fd)
+      end)
+    end,
+    function(written, fd, cb)
+      if written ~= #exe then
+        return cb("did not write it all " .. written .. " " .. #exe)
+      end
+      fs.close(fd, cb)
+    end},
+  cb)
+end
+
+local function test_upgrade(version, expected_status, test, asserts)
+  local options = createOptions(path.join(TEST_DIR, testexe), version)
+  setupExe(TEST_DIR, testexe, '0777', function(err)
+    asserts.ok(not err, err)
+    upgrade.attempt(options, function(err, status)
+      asserts.ok(not err)
+      asserts.ok(status == expected_status)
+      test.done()
+    end)
   end)
+end
+
+exports['test_virgo_upgrade_1'] = function(test, asserts)
+  test_upgrade('0.2.0-24', upgrade.UPGRADE_EQUAL, test, asserts)
 end
 
 exports['test_virgo_upgrade_2'] = function(test, asserts)
-  local options = createOptions('tests/upgrade/exe/0001.sh', '0.2.0-23')
-  upgrade.attempt(options, function(err, status)
-    asserts.ok(not err)
-    asserts.ok(status == upgrade.UPGRADE_PERFORM)
-    test.done()
-  end)
+  test_upgrade('0.2.0-23', upgrade.UPGRADE_PERFORM, test, asserts)
 end
 
 exports['test_virgo_upgrade_3'] = function(test, asserts)
-  local options = createOptions('tests/upgrade/exe/0001.sh', '0.2.0-25')
-  upgrade.attempt(options, function(err, status)
-    asserts.ok(not err)
-    asserts.ok(status == upgrade.UPGRADE_DOWNGRADE)
-    test.done()
-  end)
+  test_upgrade('0.2.0-25', upgrade.UPGRADE_DOWNGRADE, test, asserts)
 end
 
 return exports
